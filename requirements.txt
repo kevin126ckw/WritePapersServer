@@ -1,0 +1,5 @@
+sv-ttk==2.6.0
+darkdetect~=0.8.0
+plyer==2.1.0
+dbus-python==1.4.0
+structlog~=25.3.0
