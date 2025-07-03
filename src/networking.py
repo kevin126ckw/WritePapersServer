@@ -10,6 +10,7 @@ import json
 
 import paperlib as lib
 import structlog
+
 """
     网络部分的模块
     一个标准的客户端数据包应该是json格式，具体这样的：
@@ -20,7 +21,7 @@ import structlog
             "key":"value"
         }
     }
-    
+
     服务端数据包应去除token,格式如下
     {
         "type": "类型",
@@ -56,11 +57,15 @@ import structlog
         }
     }
 """
+
+
 def _get_logger():
     return structlog.get_logger()
 
+
 logger = _get_logger()
 temp_xml_dir = "data/"
+
 
 class ServerNetwork:
     def __init__(self):
@@ -73,7 +78,6 @@ class ServerNetwork:
         self.logged_in_clients = {}
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.bind((self.server_host, self.server_port))
-
 
     def listen_clients(self, callback):
         """
@@ -89,8 +93,8 @@ class ServerNetwork:
             conn, addr = self.sock.accept()
             self.clients.append(conn)
             callback(conn=conn, addr=addr)
-
-    def send_packet(self, conn, message_type, payload):
+    @staticmethod
+    def send_packet(conn, message_type, payload):
         """
         发送数据包
         Args:
@@ -105,9 +109,14 @@ class ServerNetwork:
             "payload": payload
         }
         packet = json.dumps(packet)
-        conn.sendall(packet.encode("utf-8") + b"\n")
+        packet_bytes = packet.encode("utf-8")
+        # 先发送4字节的数据长度
+        length = len(packet_bytes)
+        conn.sendall(length.to_bytes(4, byteorder='big'))
+        # 再发送数据内容
+        conn.sendall(packet_bytes)
         logger.debug("Message sent:" + packet)
-        self.server_port = self.server_port #  强忽略IDE的警告(好神经啊)
+
     def remove_client(self, conn):
         """
         线程安全的移除客户端连接
@@ -122,11 +131,17 @@ class ServerNetwork:
             logger.debug(f"Client removed: {conn}")
         else:
             logger.warning("Trying to remove a unhandled client")
+
+
 if __name__ == '__main__':
     """调试"""
     # logger = structlog.get_logger()
     net = ServerNetwork()
+
+
     def handle_client(conn, addr):
         logger.info(f"New client connected: {addr}")
         net.send_packet(conn, "server_hello", {"content": "Hello, world!"})
+
+
     net.listen_clients(handle_client)

@@ -11,9 +11,10 @@ import traceback
 import json
 import sys
 import time
-# import database
+import database
 import networking
 import structlog
+import socket
 
 logger = structlog.get_logger()
 net = networking.ServerNetwork()
@@ -21,9 +22,12 @@ net = networking.ServerNetwork()
 server_listen_thread = None
 logged_in_clients = {}
 
+
 class Server:
-    @staticmethod
-    def handle_client(conn, addr):
+    def __init__(self):
+        self.db = database.Database()
+        self.db.connect("data/server.sqlite")
+    def handle_client(self, conn, addr):
         """
         客户端处理函数，这个函数将在一个单独的线程中服务客户端
         Args:
@@ -34,68 +38,133 @@ class Server:
         """
         global server_listen_thread
         username = None
+        uid = None
         raw_msg = None
         logger.info(f"New client connected: {addr}")
         net.send_packet(conn, "server_hello", {"content": "Hello, world!"})
-        buffer = ""
         try:
             # 主消息处理循环
             while True:
                 try:
-                    # 接收并解析客户端消息
-                    data = conn.recv(1024).decode('utf-8')
-                    if not data:
+                    # 首先接收4字节的数据长度
+                    length_bytes = conn.recv(4)
+                    if not length_bytes:
                         logger.info(f"Client {addr} disconnected.")
                         break
-                    buffer += data
+                    # 解析数据长度
+                    data_length = int.from_bytes(length_bytes, byteorder='big')
+                    # 根据长度接收完整数据
+                    data = b''
+                    while len(data) < data_length:
+                        remaining = data_length - len(data)
+                        chunk = conn.recv(min(1024, remaining))
+                        if not chunk:
+                            logger.info(f"Client {addr} disconnected during data transfer.")
+                            break
+                        data += chunk
+                    if len(data) == data_length:
+                        # 解析数据包
+                        message = json.loads(data.decode('utf-8'))
 
 
-
-                    try:
-                        # 此时已经得到一个完整的数据包
-                        # 尝试解析数据包
-                        message = json.loads(data)
                         # 此时已经获得了可使用的数据
                         if message["token"]:
                             token = message["token"]
                             str(token)  # 还是强忽略IDE的警告(好神经啊)
+
                             # 处理登录请求
-                            if message['type'] == "login":  # 暂时不验证
+                            if message['type'] == "login":  # 把验证加回来了
                                 username = message['payload']['username']
                                 password = message['payload']['password']
-                                if username and password:
+                                if self.db.check_account_password(username, password):
                                     net.send_packet(conn, "login_result", {"success": True})
+                                    uid = str(self.db.get_uid_by_username(username))
                                     # 添加到已登录用户列表
-                                    logged_in_clients[username] = conn
+                                    logged_in_clients[uid] = conn
                                 else:
                                     net.send_packet(conn, "login_result", {"success": False})
                                     # 登录失败就残酷的直接断开连接
                                     net.remove_client(conn)
+                                    break
                             elif message['type'] == "send_message":
                                 if username is not None:
                                     to_user = message['payload']['to_user']
                                     message = message['payload']['message']
+                                    send_time = time.time()
                                     if to_user and message:
-                                        net.send_packet(conn, "send_message_result", {"success": True})
+                                        # net.send_packet(conn, "send_message_result", {"success": True})
                                         # 转发消息
-                                        # 此时to_user为接收方的用户名，需修改
-                                        net.send_packet(logged_in_clients[to_user], "new_message", {"from_user": username, "message": message})
+                                        if to_user in logged_in_clients:
+                                            net.send_packet(logged_in_clients[to_user], "new_message",
+                                                        {"from_user": uid, "message": message, "time": send_time})
+                                        else:
+                                            # 添加到数据库
+                                            logger.debug("Adding chat history to database.")
+                                            self.db.save_chat_history(message, uid, to_user)
                                     else:
                                         net.send_packet(conn, "send_message_result", {"success": False})
-                    except json.JSONDecodeError as e:
-                        logger.error(f"JSON解析失败: {e}, 数据内容: {raw_msg}")
-                        traceback.print_exc()
-                except Exception as e:
-                    # 处理错误
-                    logger.error(f"Error processing client: {e}")
-                    traceback.print_exc()
+                            elif message['type'] == "get_offline_messages":
+                                # 离线消息
+                                net.send_packet(conn, "offline_messages", self.db.select_sql("offline_chat_history", 'content, from_user, to_user, send_time',f"to_user={uid}"))
+
+                except ConnectionResetError:
+                    logger.info(f"Client {addr} forcibly disconnected.")
+                    if conn in net.clients:
+                        net.remove_client(conn)
+                    break
+                except OSError:
+                    break
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON解析失败: {e}, 数据内容: {raw_msg}")
+            traceback.print_exc()
+        except Exception as e:
+            # 处理错误
+            logger.error(f"Error processing client: {e}")
+            traceback.print_exc()
+
         finally:
             # 连接关闭处理
             # 确保移除客户端连接
             if conn in net.clients:
                 net.remove_client(conn)
+
+r"""
+                    _ooOoo_
+                   o8888888o
+                   88" . "88
+                   (| -_- |)
+                    O\ = /O
+                ____/`---'\____
+              .   ' \\| |// `.
+               / \\||| : |||// \
+             / _||||| -:- |||||- \
+               | | \\\ - /// | |
+             | \_| ''\---/'' | |
+              \ .-\__ `-` ___/-. /
+           ___`. .' /--.--\ `. . __
+        ."" '< `.___\_<|>_/___.' >'"".
+       | | : `- \`.;`\ _ /`;.`/ - ` : | |
+         \ \ `-. \_ __\ /__ _/ .-` / /
+ ======`-.____`-.___\_____/___.-`____.-'======
+                    `=---='
+
+ .............................................
+          佛祖保佑             永无BUG
+  佛曰:
+          写字楼里写字间，写字间里程序员；
+          程序人员写程序，又拿程序换酒钱。
+          酒醒只在网上坐，酒醉还来网下眠；
+          酒醉酒醒日复日，网上网下年复年。
+          但愿老死电脑间，不愿鞠躬老板前；
+          奔驰宝马贵者趣，公交自行程序员。
+          别人笑我忒疯癫，我笑自己命太贱；
+          不见满街漂亮妹，哪个归得程序员？
+
+"""
+
+
 def main():
-    global net,server_listen_thread
+    global net, server_listen_thread
     try:
         logger.info("Starting net...")
         server = Server()
@@ -110,6 +179,9 @@ def main():
         logger.info("Server stopped.")
         for client in net.clients:
             client.close()
+        if net.sock:
+            net.sock.shutdown(socket.SHUT_RDWR)
+            net.sock.close()
         sys.exit(0)
 
 
