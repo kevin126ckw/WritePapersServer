@@ -7,6 +7,7 @@
 # @Author  : Kevin Chang
 import socket
 import json
+import threading
 
 import paperlib as lib
 import structlog
@@ -92,7 +93,7 @@ class ServerNetwork:
         while True:
             conn, addr = self.sock.accept()
             self.clients.append(conn)
-            callback(conn=conn, addr=addr)
+            threading.Thread(target=callback, args=(conn, addr), daemon=True).start()
     @staticmethod
     def send_packet(conn, message_type, payload):
         """
@@ -126,8 +127,8 @@ class ServerNetwork:
             :return: None
         """
         if conn in self.clients:
-            conn.close()
             self.clients.remove(conn)
+            conn.close()
             logger.debug(f"Client removed: {conn}")
         else:
             logger.warning("Trying to remove a unhandled client")

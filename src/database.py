@@ -113,6 +113,7 @@ class Database:
         """register_time应为unix时间戳"""
         self.insert_sql("user", "username, password, name, register_time",
                             [username, password, name, register_time])
+        return self.select_sql("user", "id", f"username='{username}'")
 
     def delete_account(self, uid):
         """
@@ -168,9 +169,9 @@ class Database:
 
     def delete_chat_history_from_db(self, uid):
         """
-        删除用户全部聊天记录
+        删除用户全部离线聊天记录
         Args:
-            :param uid
+            :param uid: 被删除的用户的UID
         """
         self.run_sql("DELETE FROM main.offline_chat_history WHERE to_user=?", [uid])
 

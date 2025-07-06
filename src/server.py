@@ -22,6 +22,7 @@ net = networking.ServerNetwork()
 server_listen_thread = None
 logged_in_clients = {}
 
+server = None
 
 class Server:
     def __init__(self):
@@ -76,11 +77,12 @@ class Server:
                             if message['type'] == "login":  # 把验证加回来了
                                 username = message['payload']['username']
                                 password = message['payload']['password']
-                                if self.db.check_account_password(username, password):
+                                uid = str(self.db.get_uid_by_username(username))
+                                if self.db.check_account_password(username, password) and uid not in net.logged_in_clients:
                                     net.send_packet(conn, "login_result", {"success": True})
-                                    uid = str(self.db.get_uid_by_username(username))
+
                                     # 添加到已登录用户列表
-                                    logged_in_clients[uid] = conn
+                                    net.logged_in_clients[uid] = conn
                                 else:
                                     net.send_packet(conn, "login_result", {"success": False})
                                     # 登录失败就残酷的直接断开连接
@@ -94,8 +96,8 @@ class Server:
                                     if to_user and message:
                                         # net.send_packet(conn, "send_message_result", {"success": True})
                                         # 转发消息
-                                        if to_user in logged_in_clients:
-                                            net.send_packet(logged_in_clients[to_user], "new_message",
+                                        if to_user in net.logged_in_clients:
+                                            net.send_packet(net.logged_in_clients[to_user], "new_message",
                                                         {"from_user": uid, "message": message, "time": send_time})
                                         else:
                                             # 添加到数据库
@@ -106,10 +108,22 @@ class Server:
                             elif message['type'] == "get_offline_messages":
                                 # 离线消息
                                 net.send_packet(conn, "offline_messages", self.db.select_sql("offline_chat_history", 'content, from_user, to_user, send_time',f"to_user={uid}"))
+                                self.db.delete_chat_history_from_db(uid)
+                            elif message['type'] == "register_account":
+                                username = message['payload']['username']
+                                password = message['payload']['password']
+                                result = self.db.add_account(username, password, username, time.time())
+                                if result[0][0]:
+                                    net.send_packet(conn, "register_result", {"success": True, 'uid': result[0][0], 'username': username, 'password': password})
+                                else:
+                                    net.send_packet(conn, "register_result", {"success": False})
 
                 except ConnectionResetError:
                     logger.info(f"Client {addr} forcibly disconnected.")
                     if conn in net.clients:
+                        if uid in net.logged_in_clients:
+                            logger.debug(f"Client {conn} logged out")
+                            del net.logged_in_clients[str(uid)]
                         net.remove_client(conn)
                     break
                 except OSError:
@@ -126,6 +140,9 @@ class Server:
             # 连接关闭处理
             # 确保移除客户端连接
             if conn in net.clients:
+                if uid in net.logged_in_clients:
+                    logger.debug(f"Client {conn} logged out")
+                    del net.logged_in_clients[str(uid)]
                 net.remove_client(conn)
 
 r"""
@@ -164,7 +181,7 @@ r"""
 
 
 def main():
-    global net, server_listen_thread
+    global net, server_listen_thread, server
     try:
         logger.info("Starting net...")
         server = Server()
@@ -174,6 +191,7 @@ def main():
             # 循环检查当前连接
             time.sleep(3)
             logger.debug("Current Clients conn :" + str(net.clients))
+            logger.debug("Current Logged In Clients :" + str(net.logged_in_clients))
     except KeyboardInterrupt:
         # 键盘中断处理
         logger.info("Server stopped.")
@@ -182,6 +200,7 @@ def main():
         if net.sock:
             net.sock.shutdown(socket.SHUT_RDWR)
             net.sock.close()
+        server.db.close()
         sys.exit(0)
 
 
