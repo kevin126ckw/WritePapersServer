@@ -78,7 +78,9 @@ class ServerNetwork:
         # 全局变量：存储已登录的客户端
         self.logged_in_clients = {}
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.server_host, self.server_port))
+
 
     def listen_clients(self, callback):
         """
@@ -132,7 +134,6 @@ class ServerNetwork:
             logger.debug(f"Client removed: {conn}")
         else:
             logger.warning("Trying to remove a unhandled client")
-
 
 if __name__ == '__main__':
     """调试"""

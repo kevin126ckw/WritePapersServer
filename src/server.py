@@ -15,14 +15,21 @@ import database
 import networking
 import structlog
 import socket
+import color
+from colorama import init
+# from not_important_codes import afk
 
+init(autoreset=True)
 logger = structlog.get_logger()
 net = networking.ServerNetwork()
+color = color.Colored()
 
-server_listen_thread = None
+server_listen_thread = NotImplemented
+# afk_thread = threading.Thread(target=afk, args=(net,), daemon=True)
+# need_afk = False
 logged_in_clients = {}
 
-server = None
+server = NotImplemented
 
 class Server:
     def __init__(self):
@@ -145,6 +152,18 @@ class Server:
                     del net.logged_in_clients[str(uid)]
                 net.remove_client(conn)
 
+def stop_server():
+    logger.info("Stopping server...")
+    for client in net.clients:
+        client.close()
+    if net.sock:
+        net.sock.shutdown(socket.SHUT_RDWR)
+        net.sock.close()
+        pass
+    server.db.close()
+    logger.info("Server stopped.")
+    sys.exit(0)
+
 r"""
                     _ooOoo_
                    o8888888o
@@ -181,27 +200,37 @@ r"""
 
 
 def main():
-    global net, server_listen_thread, server
+    global net, server_listen_thread, server, afk_thread, need_afk
     try:
-        logger.info("Starting net...")
+        logger.info("Starting server...")
         server = Server()
         server_listen_thread = threading.Thread(target=net.listen_clients, args=(server.handle_client,), daemon=True)
         server_listen_thread.start()
         while True:
-            # 循环检查当前连接
+            # 服务器控制台
+            """
             time.sleep(3)
             logger.debug("Current Clients conn :" + str(net.clients))
             logger.debug("Current Logged In Clients :" + str(net.logged_in_clients))
+            """
+            time.sleep(0.3)
+            command = input(color.green("Write papers server >>> "))
+            if command == "stop":
+                stop_server()
+            elif command == "status":
+                logger.info("Server status:")
+                logger.info("Current Clients conn :" + str(net.clients))
+                logger.info("Current Logged In Clients :" + str(net.logged_in_clients))
+            elif command == "help":
+                logger.info("Available commands:")
+                logger.info("stop - Stop the server")
+                logger.info("status - Show the status of the server")
+                logger.info("help - Show this help message")
+            else:
+                logger.info("Invalid command.")
     except KeyboardInterrupt:
         # 键盘中断处理
-        logger.info("Server stopped.")
-        for client in net.clients:
-            client.close()
-        if net.sock:
-            net.sock.shutdown(socket.SHUT_RDWR)
-            net.sock.close()
-        server.db.close()
-        sys.exit(0)
+        stop_server()
 
 
 if __name__ == "__main__":

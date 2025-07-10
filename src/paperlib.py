@@ -27,7 +27,7 @@ def read_xml(keyword, path="../data/"):
 
     """
     try:
-        # 构建XML文件绝对路径：当前文件目录的上层data目录 + 参数指定的文件名
+        # 构建XML文件绝对路径：参数指定的目录 + server.xml
         xml_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), f'{path}server.xml')
 
         # 解析XML文档并获取根节点
