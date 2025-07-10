@@ -210,6 +210,19 @@ class Database:
             print(e)
             print(traceback.format_exc())
             return None
+    def check_account_exists(self, username):
+        """
+        检查账号是否存在
+        Args:
+            :param username: 用户名
+        Returns:
+            :return: bool: 存在与否
+        """
+        result = self.select_sql("user", "id", f"username='{username}'")
+        if not result:
+            return False
+        else:
+            return True
 if __name__ == "__main__":
     db = Database()
     db.connect("data/server.sqlite")
