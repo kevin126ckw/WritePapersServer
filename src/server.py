@@ -73,7 +73,7 @@ class Server:
                     if len(data) == data_length:
                         # 解析数据包
                         message = json.loads(data.decode('utf-8'))
-
+                        logger.debug(f"Received message from {addr}: {message}")
 
                         # 此时已经获得了可使用的数据
                         if message["token"]:
@@ -119,6 +119,9 @@ class Server:
                             elif message['type'] == "register_account":
                                 username = message['payload']['username']
                                 password = message['payload']['password']
+                                if self.db.check_account_exists(username):
+                                    net.send_packet(conn, "register_result", {"success": False})
+                                    continue
                                 result = self.db.add_account(username, password, username, time.time())
                                 if result[0][0]:
                                     net.send_packet(conn, "register_result", {"success": True, 'uid': result[0][0], 'username': username, 'password': password})
@@ -215,17 +218,19 @@ def main():
             """
             time.sleep(0.3)
             command = input(color.green("Write papers server >>> "))
-            if command == "stop":
+            if command.startswith("stop"):
                 stop_server()
-            elif command == "status":
+            elif command.startswith("status"):
                 logger.info("Server status:")
                 logger.info("Current Clients conn :" + str(net.clients))
                 logger.info("Current Logged In Clients :" + str(net.logged_in_clients))
-            elif command == "help":
+            elif command.startswith("help"):
                 logger.info("Available commands:")
                 logger.info("stop - Stop the server")
                 logger.info("status - Show the status of the server")
                 logger.info("help - Show this help message")
+            elif command.startswith("check account exists"):
+                logger.info(server.db.check_account_exists(command[21:]))
             else:
                 logger.info("Invalid command.")
     except KeyboardInterrupt:
