@@ -127,7 +127,6 @@ class Server:
                                     net.send_packet(conn, "register_result", {"success": True, 'uid': result[0][0], 'username': username, 'password': password})
                                 else:
                                     net.send_packet(conn, "register_result", {"success": False})
-
                 except ConnectionResetError:
                     logger.info(f"Client {addr} forcibly disconnected.")
                     if conn in net.clients:
@@ -232,6 +231,8 @@ def main():
                 logger.info("help - Show this help message")
             elif command.startswith("check account exists"):
                 logger.info(server.db.check_account_exists(command[21:]))
+            elif command == "":
+                pass
             else:
                 logger.info("Invalid command.")
     except KeyboardInterrupt:

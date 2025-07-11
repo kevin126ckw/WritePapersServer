@@ -29,7 +29,7 @@ class Database:
             self.cursor = self.conn.cursor()
         except sqlite3.Error as e:
             logger.error(f"Error connecting to database: {e}")
-            logger.traceback(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
     def run_sql(self, command, params=None):
         """
@@ -64,7 +64,7 @@ class Database:
             self.conn.commit()
         except sqlite3.Error as e:
             logger.error(f"插入数据失败: {e}")
-            logger.traceback(traceback.format_exc())
+            logger.error(traceback.format_exc())
 
     def select_sql(self, table, columns, condition=None):
         """
@@ -82,7 +82,7 @@ class Database:
             return result
         except sqlite3.Error as e:
             logger.error(f"查询数据失败: {e}")
-            logger.traceback(traceback.format_exc())
+            logger.error(traceback.format_exc())
             return None
 
     def close(self):
