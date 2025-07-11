@@ -9,7 +9,7 @@ from xml.etree import ElementTree
 import os
 
 
-def read_xml(keyword, path="../data/"):
+def read_xml(keyword, path="data/"):
     """
     从指定侧的XML文件中读取对应关键字的值
 

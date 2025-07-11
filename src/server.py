@@ -7,7 +7,7 @@
 # @Author  : Kevin Chang
 import threading
 import traceback
-# import paperlib as lib
+import paperlib as lib
 import json
 import sys
 import time
@@ -34,7 +34,18 @@ server = NotImplemented
 class Server:
     def __init__(self):
         self.db = database.Database()
-        self.db.connect("data/server.sqlite")
+        self.db.connect(lib.read_xml("database/file"))
+    @staticmethod
+    def handle_egg(conn, addr):
+        data_byte = b'GET ' + conn.recv(1024)
+        data = data_byte.decode('utf-8')
+        if data.startswith("GET /favicon.ico"):
+            conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Type: image/png\r\n\r\n')
+            net.remove_client(conn)
+        conn.sendall(b'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n<html><body><h1>Hello, World!</h1></body></html>')
+        logger.info(f"Egg request from {addr}")
+        net.remove_client(conn)
+
     def handle_client(self, conn, addr):
         """
         客户端处理函数，这个函数将在一个单独的线程中服务客户端
@@ -49,15 +60,20 @@ class Server:
         uid = None
         raw_msg = None
         logger.info(f"New client connected: {addr}")
-        net.send_packet(conn, "server_hello", {"content": "Hello, world!"})
+        # net.send_packet(conn, "server_hello", {"content": "Hello, world!"})
         try:
             # 主消息处理循环
             while True:
                 try:
                     # 首先接收4字节的数据长度
                     length_bytes = conn.recv(4)
+                    if length_bytes == b'GET ':
+                        self.handle_egg(conn, addr)
+                        # net.remove_client(conn)
+                        # break
                     if not length_bytes:
                         logger.info(f"Client {addr} disconnected.")
+                        # net.remove_client(conn)
                         break
                     # 解析数据长度
                     data_length = int.from_bytes(length_bytes, byteorder='big')
