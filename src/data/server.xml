@@ -4,4 +4,7 @@
     <ip>127.0.0.1</ip>
     <port>3624</port>
   </server>
+  <database>
+    <file>data/server.sqlite</file>
+  </database>
 </data>
