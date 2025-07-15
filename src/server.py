@@ -104,7 +104,7 @@ class Server:
                                 password = message['payload']['password']
                                 uid = str(self.db.get_uid_by_username(username))
                                 if self.db.check_account_password(username, password) and uid not in net.logged_in_clients:
-                                    net.send_packet(conn, "login_result", {"success": True})
+                                    net.send_packet(conn, "login_result", {"success": True, "uid": uid})# 发送登录结果（带UID）
 
                                     # 添加到已登录用户列表
                                     net.logged_in_clients[uid] = conn
@@ -145,6 +145,25 @@ class Server:
                                     net.send_packet(conn, "register_result", {"success": True, 'uid': result[0][0], 'username': username, 'password': password})
                                 else:
                                     net.send_packet(conn, "register_result", {"success": False})
+                            elif message['type'] == "add_friend":
+                                if message['payload']['friend_id_type'] == "username":
+                                    friend_token = self.db.select_sql("user", "friend_token", f"username={message['payload']['friend_id']}")[0][0]
+                                    if friend_token == message['payload']['verify_token']:
+                                        net.send_packet(conn, "add_friend_result", {"success": True, "friend_uid": message['payload']['friend_id'], "friend_username": self.db.get_uid_by_username(message['payload']['friend_id']), "friend_name": self.db.get_name_by_uid(message['payload']['friend_id'])})
+                                elif message['payload']['friend_id_type'] == "uid":
+                                    friend_token = self.db.select_sql("user", "friend_token", f"id={message['payload']['friend_id']}")[0][0]
+                                    if friend_token == message['payload']['verify_token']:
+                                        net.send_packet(conn, "add_friend_result", {"success": True, "friend_uid": message['payload']['friend_id'], "friend_username": self.db.get_username_by_uid(message['payload']['friend_id']), "friend_name": self.db.get_name_by_uid(message['payload']['friend_id'])})
+                                        if uid in net.logged_in_clients:
+                                            net.send_packet(conn, "new_message", {"from_user": message['payload']['friend_id'], "message": "我通过了你的好友验证请求，现在我们可以开始聊天了", "time": time.time(), "need_update_contact": False})
+                                        else:
+                                            # 添加到数据库
+                                            logger.debug("Adding chat history to database.")
+                                            self.db.save_chat_history("我通过了你的好友验证请求，现在我们可以开始聊天了", message['payload']['friend_id'], uid)
+                                else:
+                                    logger.warn(f"Client {addr} send a invalid message.")
+                            elif message['type'] == "change_friend_token":
+                                self.db.change_friend_token(uid, message['payload']['new_friend_token'])
                 except ConnectionResetError:
                     logger.info(f"Client {addr} forcibly disconnected.")
                     if conn in net.clients:
@@ -222,6 +241,18 @@ r"""
 def main():
     global net, server_listen_thread, server
     try:
+        server_ascii = r"""
+         _    _      _ _      ______                                                          
+        | |  | |    (_) |     | ___ \                                                         
+        | |  | |_ __ _| |_ ___| |_/ /_ _ _ __   ___ _ __ ___     ___  ___ _ ____   _____ _ __ 
+        | |/\| | '__| | __/ _ \  __/ _` | '_ \ / _ \ '__/ __|   / __|/ _ \ '__\ \ / / _ \ '__|
+        \  /\  / |  | | ||  __/ | | (_| | |_) |  __/ |  \__ \   \__ \  __/ |   \ V /  __/ |   
+         \/  \/|_|  |_|\__\___\_|  \__,_| .__/ \___|_|  |___/   |___/\___|_|    \_/ \___|_|   
+                                        | |                                                   
+                                        |_|                                                   
+                                                                    v1.0.0 development
+        """
+        print(color.green(server_ascii))
         logger.info("Starting server...")
         server = Server()
         server_listen_thread = threading.Thread(target=net.listen_clients, args=(server.handle_client,), daemon=True)
@@ -233,7 +264,7 @@ def main():
             logger.debug("Current Clients conn :" + str(net.clients))
             logger.debug("Current Logged In Clients :" + str(net.logged_in_clients))
             """
-            time.sleep(0.3)
+            time.sleep(0.03)
             command = input(color.green("Write papers server >>> "))
             if command.startswith("stop"):
                 stop_server()

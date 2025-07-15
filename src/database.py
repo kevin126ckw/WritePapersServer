@@ -27,9 +27,12 @@ class Database:
         try:
             self.conn = sqlite3.connect(file , check_same_thread=False)
             self.cursor = self.conn.cursor()
+        except TypeError as e:
+            logger.error(f"Error connecting to database: {e}",exc_info=True)
+            logger.warning("Please check your database file configuration is not empty.")
         except sqlite3.Error as e:
-            logger.error(f"Error connecting to database: {e}")
-            logger.error(traceback.format_exc())
+            logger.error(f"Error connecting to database: {e}",exc_info=True)
+            logger.warning("Please check your database file configuration is correct.")
 
     def run_sql(self, command, params=None):
         """
@@ -45,7 +48,7 @@ class Database:
                 self.cursor.execute(command)
             self.conn.commit()  # 提交事务
         except sqlite3.Error as e:
-            logger.error(f"执行 SQL 失败: {e} 欲执行的SQL语句：{command}")
+            logger.error(f"执行 SQL 失败: {e} 欲执行的SQL语句：{command}",exc_info=True)
         return self.cursor.fetchall()
 
     def insert_sql(self, table, columns, values):
@@ -63,8 +66,7 @@ class Database:
             self.cursor.execute(sql, tuple(values))
             self.conn.commit()
         except sqlite3.Error as e:
-            logger.error(f"插入数据失败: {e}")
-            logger.error(traceback.format_exc())
+            logger.error(f"插入数据失败: {e}",exc_info=True)
 
     def select_sql(self, table, columns, condition=None):
         """
@@ -81,8 +83,7 @@ class Database:
             result = self.run_sql(sql)
             return result
         except sqlite3.Error as e:
-            logger.error(f"查询数据失败: {e}")
-            logger.error(traceback.format_exc())
+            logger.error(f"查询数据失败: {e}",exc_info=True)
             return None
 
     def close(self):
@@ -223,6 +224,27 @@ class Database:
             return False
         else:
             return True
+    def get_username_by_uid(self, uid):
+        """
+        通过uid获取用户名
+        Args:
+            :param uid: 用户id
+        Returns:
+            :return: str: 用户名
+        """
+        result = self.select_sql("user", "username", f"id={uid}")
+        if not result:
+            return None
+        else:
+            return result[0][0]
+    def change_friend_token(self, uid, token):
+        """
+        修改好友的token
+        Args:
+            :param uid: 用户id
+            :param token: token
+        """
+        self.run_sql("UPDATE main.user SET friend_token=? WHERE id=?", [token, uid])
 if __name__ == "__main__":
     db = Database()
     db.connect("data/server.sqlite")
