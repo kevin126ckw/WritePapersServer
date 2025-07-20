@@ -99,71 +99,158 @@ class Server:
                             str(token)  # 还是强忽略IDE的警告(好神经啊)
 
                             # 处理登录请求
-                            if message['type'] == "login":  # 把验证加回来了
-                                username = message['payload']['username']
-                                password = message['payload']['password']
-                                uid = str(self.db.get_uid_by_username(username))
-                                if self.db.check_account_password(username, password) and uid not in net.logged_in_clients:
-                                    net.send_packet(conn, "login_result", {"success": True, "uid": uid})# 发送登录结果（带UID）
-
-                                    # 添加到已登录用户列表
-                                    net.logged_in_clients[uid] = conn
-                                else:
-                                    net.send_packet(conn, "login_result", {"success": False})
-                                    # 登录失败就残酷的直接断开连接
-                                    net.remove_client(conn)
-                                    break
-                            elif message['type'] == "send_message":
-                                if username is not None:
-                                    to_user = message['payload']['to_user']
-                                    message = message['payload']['message']
-                                    send_time = time.time()
-                                    if to_user and message:
-                                        # net.send_packet(conn, "send_message_result", {"success": True})
-                                        # 转发消息
-                                        if to_user in net.logged_in_clients:
-                                            net.send_packet(net.logged_in_clients[to_user], "new_message",
-                                                        {"from_user": uid, "message": message, "time": send_time})
-                                        else:
-                                            # 添加到数据库
-                                            logger.debug("Adding chat history to database.")
-                                            self.db.save_chat_history(message, uid, to_user)
+                            match message['type']:
+                                case "login":  # 把验证加回来了
+                                    username = message['payload']['username']
+                                    password = message['payload']['password']
+                                    uid = str(self.db.get_uid_by_username(username))
+                                    if self.db.check_account_password(username, password) and uid not in net.logged_in_clients:
+                                        net.send_packet(conn, "login_result", {"success": True, "uid": uid})# 发送登录结果（带UID）
+    
+                                        # 添加到已登录用户列表
+                                        net.logged_in_clients[uid] = conn
                                     else:
-                                        net.send_packet(conn, "send_message_result", {"success": False})
-                            elif message['type'] == "get_offline_messages":
-                                # 离线消息
-                                net.send_packet(conn, "offline_messages", self.db.select_sql("offline_chat_history", 'content, from_user, to_user, send_time',f"to_user={uid}"))
-                                self.db.delete_chat_history_from_db(uid)
-                            elif message['type'] == "register_account":
-                                username = message['payload']['username']
-                                password = message['payload']['password']
-                                if self.db.check_account_exists(username):
-                                    net.send_packet(conn, "register_result", {"success": False})
-                                    continue
-                                result = self.db.add_account(username, password, username, time.time())
-                                if result[0][0]:
-                                    net.send_packet(conn, "register_result", {"success": True, 'uid': result[0][0], 'username': username, 'password': password})
-                                else:
-                                    net.send_packet(conn, "register_result", {"success": False})
-                            elif message['type'] == "add_friend":
-                                if message['payload']['friend_id_type'] == "username":
-                                    friend_token = self.db.select_sql("user", "friend_token", f"username={message['payload']['friend_id']}")[0][0]
-                                    if friend_token == message['payload']['verify_token']:
-                                        net.send_packet(conn, "add_friend_result", {"success": True, "friend_uid": message['payload']['friend_id'], "friend_username": self.db.get_uid_by_username(message['payload']['friend_id']), "friend_name": self.db.get_name_by_uid(message['payload']['friend_id'])})
-                                elif message['payload']['friend_id_type'] == "uid":
-                                    friend_token = self.db.select_sql("user", "friend_token", f"id={message['payload']['friend_id']}")[0][0]
-                                    if friend_token == message['payload']['verify_token']:
-                                        net.send_packet(conn, "add_friend_result", {"success": True, "friend_uid": message['payload']['friend_id'], "friend_username": self.db.get_username_by_uid(message['payload']['friend_id']), "friend_name": self.db.get_name_by_uid(message['payload']['friend_id'])})
-                                        if uid in net.logged_in_clients:
-                                            net.send_packet(conn, "new_message", {"from_user": message['payload']['friend_id'], "message": "我通过了你的好友验证请求，现在我们可以开始聊天了", "time": time.time(), "need_update_contact": False})
+                                        net.send_packet(conn, "login_result", {"success": False})
+                                        # 登录失败就残酷的直接断开连接
+                                        net.remove_client(conn)
+                                        break
+                                case "send_message":
+                                    if username is not None:
+                                        to_user = message['payload']['to_user']
+                                        message = message['payload']['message']
+                                        send_time = time.time()
+                                        if to_user and message:
+                                            # net.send_packet(conn, "send_message_result", {"success": True})
+                                            # 转发消息
+                                            if to_user in net.logged_in_clients:
+                                                net.send_packet(net.logged_in_clients[to_user], "new_message",
+                                                            {"from_user": uid, "message": message, "time": send_time})
+                                            else:
+                                                # 添加到数据库
+                                                logger.debug("Adding chat history to database.")
+                                                self.db.save_chat_history(message, uid, to_user)
                                         else:
-                                            # 添加到数据库
-                                            logger.debug("Adding chat history to database.")
-                                            self.db.save_chat_history("我通过了你的好友验证请求，现在我们可以开始聊天了", message['payload']['friend_id'], uid)
-                                else:
-                                    logger.warn(f"Client {addr} send a invalid message.")
-                            elif message['type'] == "change_friend_token":
-                                self.db.change_friend_token(uid, message['payload']['new_friend_token'])
+                                            net.send_packet(conn, "send_message_result", {"success": False})
+                                case "get_offline_messages":
+                                    # 离线消息
+                                    net.send_packet(conn, "offline_messages", self.db.select_sql("offline_chat_history",
+                                                                                                 'content, from_user, to_user, send_time',
+                                                                                                 f"to_user={uid}"))
+                                    self.db.delete_chat_history_from_db(uid)
+                                case "register_account":
+                                    username = message['payload']['username']
+                                    password = message['payload']['password']
+                                    if self.db.check_account_exists(username):
+                                        net.send_packet(conn, "register_result", {"success": False})
+                                        continue
+                                    result = self.db.add_account(username, password, username, time.time())
+                                    if result[0][0]:
+                                        net.send_packet(conn, "register_result",
+                                                        {"success": True, 'uid': result[0][0], 'username': username,
+                                                         'password': password})
+                                    else:
+                                        net.send_packet(conn, "register_result", {"success": False})
+                                case "add_friend":
+                                    if message['payload']['friend_id_type'] == "username":
+                                        # 根据用户名加好友的处理
+                                        friend_token = self.db.select_sql("user", "friend_token",
+                                                                          f"username={message['payload']['friend_id']}")[0][
+                                            0]
+                                        if friend_token == message['payload']['verify_token']:
+                                            # 验证口令正确
+                                            net.send_packet(conn, "add_friend_result", {"success": True,
+                                                                                       "friend_uid": self.db.get_uid_by_username(
+                                                                                           message['payload']['friend_id']),
+                                                                                       "friend_username": self.db.get_uid_by_username(
+                                                                                           message['payload']['friend_id']),
+                                                                                       "friend_name": self.db.get_name_by_uid(
+                                                                                           message['payload'][
+                                                                                               'friend_id'])})
+                                            if uid in net.logged_in_clients:
+                                                # 请求方在线
+                                                net.send_packet(conn, "new_message", {
+                                                    "from_user": self.db.get_uid_by_username(
+                                                        message['payload']['friend_id']),
+                                                    "message": "我通过了你的好友验证请求，现在我们可以开始聊天了",
+                                                    "time": time.time(), "need_update_contact": False})
+                                            else:
+                                                # 请求方不在线
+                                                # 添加到数据库
+                                                logger.debug("Adding chat history to database.")
+                                                self.db.save_chat_history("我通过了你的好友验证请求，现在我们可以开始聊天了",
+                                                                          self.db.get_uid_by_username(
+                                                                              message['payload']['friend_id']), uid)
+                                            if self.db.get_uid_by_username(
+                                                    message['payload']['friend_id']) in net.logged_in_clients:
+                                                # 响应方在线
+                                                net.send_packet(net.logged_in_clients[self.db.get_uid_by_username(
+                                                    message['payload']['friend_id'])], "new_message", {"from_user": uid,
+                                                                                                       "message": "你通过了我的好友验证请求，现在我们可以开始聊天了",
+                                                                                                       "time": time.time(),
+                                                                                                       "need_update_contact": False})
+    
+                                            else:
+                                                # 响应方不在线
+                                                self.db.save_chat_history("你通过了我的好友验证请求，现在我们可以开始聊天了",
+                                                                          uid, self.db.get_uid_by_username(
+                                                        message['payload']['friend_id']))
+                                    elif message['payload']['friend_id_type'] == "uid":
+                                        # 根据uid加好友的处理
+                                        friend_id = message['payload']['friend_id']
+                                        # 判空保护
+                                        res = self.db.select_sql("user", "friend_token", f"id={friend_id}")
+                                        if not res:
+                                            net.send_packet(conn, "add_friend_result", {"success": False})
+                                            continue
+    
+                                        friend_token = res[0][0]
+    
+                                        if friend_token == message['payload']['verify_token']:
+                                            # 验证口令正确
+                                            if message['payload']['friend_id'] in net.logged_in_clients:
+                                                # 响应方在线
+                                                net.send_packet(net.logged_in_clients[message['payload']['friend_id']],
+                                                                "add_friend_result",
+                                                                {"success": True, "friend_uid": uid,
+                                                                 "friend_username": self.db.get_username_by_uid(
+                                                                     uid),
+                                                                 "friend_name": self.db.get_name_by_uid(
+                                                                     uid)}
+                                                                )
+                                                net.send_packet(net.logged_in_clients[
+                                                    message['payload']['friend_id']], "new_message", {"from_user": uid,
+                                                                                                       "message": "你通过了我的好友验证请求，现在我们可以开始聊天了",
+                                                                                                       "time": time.time(),
+                                                                                                       "need_update_contact": False})
+                                            else:
+                                                # 响应方不在线
+                                                net.send_packet(conn, "add_friend_result",{"success": False})
+                                                continue
+                                            net.send_packet(conn, "add_friend_result",
+                                                            {"success": True, "friend_uid": message['payload']['friend_id'],
+                                                             "friend_username": self.db.get_username_by_uid(
+                                                                 message['payload']['friend_id']),
+                                                             "friend_name": self.db.get_name_by_uid(
+                                                                 message['payload']['friend_id'])})
+                                            if uid in net.logged_in_clients:
+                                                # 请求方在线
+                                                net.send_packet(conn, "new_message",
+                                                                {"from_user": message['payload']['friend_id'],
+                                                                 "message": "我通过了你的好友验证请求，现在我们可以开始聊天了",
+                                                                 "time": time.time(), "need_update_contact": False})
+                                            else:
+                                                # 请求方不在线
+                                                # 添加到数据库
+                                                logger.debug("Adding chat history to database.")
+                                                self.db.save_chat_history("我通过了你的好友验证请求，现在我们可以开始聊天了",
+                                                                          message['payload']['friend_id'], uid)
+                                        else:
+                                            # 验证口令错误
+                                            net.send_packet(conn, "add_friend_result", {"success": False})
+                                case "change_friend_token":
+                                    self.db.change_friend_token(uid, message['payload']['new_friend_token'])
+                                case _:
+                                    logger.warning(f"Unknown packet type: {message['type']}")
                 except ConnectionResetError:
                     logger.info(f"Client {addr} forcibly disconnected.")
                     if conn in net.clients:
