@@ -249,6 +249,14 @@ class Server:
                                             net.send_packet(conn, "add_friend_result", {"success": False})
                                 case "change_friend_token":
                                     self.db.change_friend_token(uid, message['payload']['new_friend_token'])
+                                case "get_friend_token":
+                                    res = self.db.select_sql("user", "friend_token", f"id={uid}")
+                                    if not res:
+                                        net.send_packet(conn, "friend_token_result", {"friend_token": None})
+                                        continue
+
+                                    friend_token = res[0][0]
+                                    net.send_packet(conn, "friend_token_result", {"friend_token": friend_token})
                                 case _:
                                     logger.warning(f"Unknown packet type: {message['type']}")
                 except ConnectionResetError:
