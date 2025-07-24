@@ -157,16 +157,17 @@ class Database:
         except IndexError:
             return False
 
-    def save_chat_history(self, message, from_user, to_user):
+    def save_chat_history(self, message, from_user, to_user, type="text"):
         """
         保存聊天记录
         Args:
             :param message: 消息内容
             :param from_user: 发送方
             :param to_user: 接收方
+            :param type: 消息类型
         """
         self.insert_sql("offline_chat_history", "content, from_user, to_user, type, send_time",
-                            [message, from_user, to_user, "text", time.time()])
+                            [message, from_user, to_user, type, time.time()])
 
     def delete_chat_history_from_db(self, uid):
         """
