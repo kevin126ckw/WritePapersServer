@@ -107,6 +107,7 @@ class Server:
                                     uid = str(self.db.get_uid_by_username(username))
                                     if self.db.check_account_password(username, password) and uid not in net.logged_in_clients:
                                         net.send_packet(conn, "login_result", {"success": True, "uid": uid})# 发送登录结果（带UID）
+                                        net.send_packet(conn, "welcome_back", {"message": f"Welcome back, {self.db.get_name_by_uid(uid)}!"})
 
                                         # 添加到已登录用户列表
                                         net.logged_in_clients[uid] = conn
@@ -140,7 +141,7 @@ class Server:
                                                 # 转发图片消息
                                                 if to_user in net.logged_in_clients:
                                                     net.send_packet(net.logged_in_clients[to_user], "new_message",
-                                                                {"from_user": uid, "message": message, "time": send_time, "type": "image"})
+                                                                {"from_user": uid, "message": base64.b64decode(message), "time": send_time, "type": "image"})
                                                 else:
                                                     # 添加消息到数据库
                                                     logger.debug("Adding chat history to database.")
