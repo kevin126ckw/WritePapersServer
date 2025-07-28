@@ -150,9 +150,26 @@ class Server:
                                             net.send_packet(conn, "send_message_result", {"success": False})
                                 case "get_offline_messages":
                                     # 离线消息
-                                    net.send_packet(conn, "offline_messages", self.db.select_sql("offline_chat_history",
-                                                                                                 'content, from_user, to_user, send_time',
-                                                                                                 f"to_user={uid}"))
+                                    try:
+                                        offline_messages = self.db.select_sql("offline_chat_history",
+                                                                                                     'content, from_user, to_user, send_time, type',
+                                                                                                     f"to_user={uid}")
+                                        for message in offline_messages:
+                                            if message[4] == "text":
+                                                pass
+                                            elif message[4] == "image":
+                                                # 将内容转换为base64(message为tuple类型)
+                                                new_content = base64.b64encode(message[0]).decode()
+                                                offline_messages[offline_messages.index(message)] = (new_content,
+                                                                                                     message[1],
+                                                                                                     message[2],
+                                                                                                     message[3],
+                                                                                                     message[4])
+
+                                        net.send_packet(conn, "offline_messages", offline_messages)
+                                    except Exception as e:
+                                        logger.error(f"Error while sending offline messages to {addr}: {e}")
+                                        continue
                                     self.db.delete_chat_history_from_db(uid)
                                 case "register_account":
                                     username = message['payload']['username']
@@ -388,10 +405,23 @@ def main():
                 logger.info("Available commands:")
                 logger.info("stop - Stop the server")
                 logger.info("status - Show the status of the server")
-                logger.info("check account exists - Check if an account exists")
+                logger.info("check account exists {uid} - Check if an account exists")
+                logger.info("get offline messages {uid} - Get user's offline message from database")
                 logger.info("help - Show this help message")
             elif command.startswith("check account exists"):
                 logger.info(server.db.check_account_exists(command[21:]))
+            elif command.startswith("get offline messages"):
+                offline_messages = server.db.select_sql("offline_chat_history",
+                                                      'content, from_user, to_user, send_time, type',
+                                                      f"to_user={command[21:]}")
+                for message in offline_messages:
+                    if message[4] == "text":
+                        pass
+                    elif message[4] == "image":
+                        # 将内容转换为base64(message为tuple类型)
+                        new_content = base64.b64encode(message[0]).decode()
+                        offline_messages[offline_messages.index(message)] = (new_content, message[1], message[2], message[3], message[4])
+                logger.info(offline_messages)
             elif command == "":
                 pass
             else:
