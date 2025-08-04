@@ -17,6 +17,7 @@ import networking
 import structlog
 import socket
 import color
+import secrets
 from colorama import init
 # from not_important_codes import afk
 
@@ -60,6 +61,7 @@ class Server:
         username = None
         uid = None
         raw_msg = None
+        token = secrets.token_urlsafe(32)
         logger.info(f"New client connected: {addr}")
         # R.I.P Hello, world while connecting.
         # Remember him and don't remove him.
@@ -95,27 +97,31 @@ class Server:
                         logger.debug(f"Received message from {addr}: {message}")
 
                         # 此时已经获得了可使用的数据
-                        if message["token"]:
-                            token = message["token"]
-                            str(token)  # 还是强忽略IDE的警告(好神经啊)
+                        if message["token"] == token or message["token"] == "LOGIN":
+                            msg_token = message["token"]
+                            str(msg_token)  # 还是强忽略IDE的警告(好神经啊)
+                            if msg_token == "LOGIN" and message['type'] == "login": # 把验证加回来了
+                                username = message['payload']['username']
+                                password = message['payload']['password']
+                                uid = str(self.db.get_uid_by_username(username))
+                                if self.db.check_account_password(username,
+                                                                  password) and uid not in net.logged_in_clients:
+                                    net.send_packet(conn, "login_result",
+                                                    {"success": True, "uid": uid, "token": token})  # 发送登录结果（带UID）
+                                    net.send_packet(conn, "welcome_back",
+                                                    {"message": f"Welcome back, {self.db.get_name_by_uid(uid)}!"})
+
+                                    # 添加到已登录用户列表
+                                    net.logged_in_clients[uid] = conn
+                                    continue
+                                else:
+                                    net.send_packet(conn, "login_result", {"success": False})
+                                    # 登录失败就残酷的直接断开连接
+                                    net.remove_client(conn)
+                                    break
 
                             # 处理登录请求
                             match message['type']:
-                                case "login":  # 把验证加回来了
-                                    username = message['payload']['username']
-                                    password = message['payload']['password']
-                                    uid = str(self.db.get_uid_by_username(username))
-                                    if self.db.check_account_password(username, password) and uid not in net.logged_in_clients:
-                                        net.send_packet(conn, "login_result", {"success": True, "uid": uid})# 发送登录结果（带UID）
-                                        net.send_packet(conn, "welcome_back", {"message": f"Welcome back, {self.db.get_name_by_uid(uid)}!"})
-
-                                        # 添加到已登录用户列表
-                                        net.logged_in_clients[uid] = conn
-                                    else:
-                                        net.send_packet(conn, "login_result", {"success": False})
-                                        # 登录失败就残酷的直接断开连接
-                                        net.remove_client(conn)
-                                        break
                                 case "send_message":
                                     if username is not None:
                                         to_user = message['payload']['to_user']
@@ -386,6 +392,8 @@ def main():
         server = Server()
         server_listen_thread = threading.Thread(target=net.listen_clients, args=(server.handle_client,), daemon=True)
         server_listen_thread.start()
+        logger.info("Press enter to start the server console.")
+        input()
         while True:
             # 服务器控制台
             """
